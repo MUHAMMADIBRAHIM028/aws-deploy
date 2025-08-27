@@ -1,32 +1,50 @@
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v0.1.7
+name: Push-to-EC2
+
+# Trigger deployment only on push to main branch
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy Django App to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the files
+        uses: actions/checkout@v2
+
+      - name: Copy project files to EC2
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.HOST_DNS }}
+          REMOTE_USER: ${{ secrets.USERNAME }}
+          TARGET: ${{ secrets.TARGET_DIR }}
+
+      - name: Run deployment commands on EC2
+        uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
+          host: ${{ secrets.HOST_DNS }}
+          username: ${{ secrets.USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Always work in /home/ubuntu/webpage
-            mkdir -p /home/ubuntu/webpage
-            cd /home/ubuntu/webpage
+            # Go to target directory
+            cd ${{ secrets.TARGET_DIR }}
 
-            # Clone or pull latest code
-            if [ -d ".git" ]; then
-              git reset --hard
-              git pull origin master
-            else
-              git clone https://github.com/MUHAMMADIBRAHIM028/aws-deploy.git .
-            fi
+            # Update & install dependencies
+            sudo apt-get -y update
+            sudo apt-get install -y python3-pip
 
-            # Install dependencies
-            sudo apt update -y
-            sudo apt install -y python3-pip
+            # Install project dependencies
             pip3 install -r requirements.txt
 
             # Run migrations
             python3 manage.py migrate
 
-            # Kill old server if running
+            # Kill any existing Django server
             pkill -f runserver || true
 
-            # Start Django on port 8000
+            # Start Django development server on port 8000
             nohup python3 manage.py runserver 0.0.0.0:8000 > server.log 2>&1 &
