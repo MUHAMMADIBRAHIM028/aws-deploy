@@ -1,38 +1,41 @@
-name: Push-to-EC2
+name: Deploy to EC2 on master branch push
 
-# Trigger deployment only on push to main branch
 on:
   push:
     branches:
-      - main
+      - master   # run this when you push to master
 
 jobs:
   deploy:
-    name: Deploy to EC2 on master branch push
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout the files
-        uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Deploy to Server 1
-        uses: easingthemes/ssh-deploy@main
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
-          REMOTE_HOST: ${{ secrets.HOST_DNS }}
-          REMOTE_USER: ${{ secrets.USERNAME }}
-          TARGET: ${{ secrets.TARGET_DIR }}
-
-      - name: Executing remote ssh commands using ssh key
-        uses: appleboy/ssh-action@master
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v0.1.7
         with:
-          host: ${{ secrets.HOST_DNS }}
-          username: ${{ secrets.USERNAME }}
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            sudo apt-get -y update
-            sudo apt-get install -y apache2
-            sudo systemctl start apache2
-            sudo systemctl enable apache2
-            cd home
-            sudo mv * /var/www/html
+            # go to project folder or clone if first time
+            cd ~/webpage || mkdir ~/webpage && cd ~/webpage
+            if [ -d ".git" ]; then
+              git pull origin master
+            else
+              git clone https://github.com/MUHAMMADIBRAHIM028/aws-deploy.git .
+            fi
+
+            # install dependencies
+            pip3 install -r requirements.txt
+
+            # run migrations
+            python3 manage.py migrate
+
+            # kill old runserver if running
+            pkill -f runserver || true
+
+            # start django on port 8000
+            nohup python3 manage.py runserver 0.0.0.0:8000 > server.log 2>&1 &
